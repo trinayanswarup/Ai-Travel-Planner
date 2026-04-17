@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.103.3",
     "groq-sdk": "^1.1.2",
     "next": "16.2.4",
     "react": "19.2.4",

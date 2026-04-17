@@ -1,7 +1,24 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import type { Budget, TravelStyle } from "@/lib/types/itinerary";
+import { AuthPanel } from "@/components/auth-panel";
+import {
+  getCurrentSession,
+  onAuthStateChanged,
+  signInWithEmail,
+  signOutUser,
+  signUpWithEmail,
+} from "@/lib/supabase/auth";
+import { createTrip, deleteTrip, listTrips, updateTrip } from "@/lib/supabase/trips";
+import type {
+  ChecklistItem,
+  FormDataState,
+  ItineraryDay,
+  ItineraryResponse,
+  SavedTrip,
+} from "@/lib/types/planner";
 
 const budgetOptions: Budget[] = ["low", "medium", "high"];
 const travelStyleOptions: TravelStyle[] = [
@@ -11,40 +28,6 @@ const travelStyleOptions: TravelStyle[] = [
   "cultural",
   "nature",
 ];
-
-type FormDataState = {
-  tripTitle: string;
-  destination: string;
-  startDate: string;
-  endDate: string;
-  budget: Budget;
-  travelStyle: TravelStyle;
-  interests: string;
-};
-
-type ItineraryDay = {
-  day: number;
-  title: string;
-  activities: {
-    morning: string[];
-    afternoon: string[];
-    evening: string[];
-  };
-  estimated_cost: string;
-  tips: string;
-};
-
-type ItineraryResponse = {
-  trip_summary: string;
-  total_estimated_budget: string;
-  days: ItineraryDay[];
-};
-
-type ChecklistItem = {
-  id: number;
-  text: string;
-  done: boolean;
-};
 
 const MS_IN_DAY = 1000 * 60 * 60 * 24;
 
@@ -68,12 +51,12 @@ const createDefaultEndDate = () => {
 };
 
 export default function Home() {
-  const { startDate, endDate } = createDefaultEndDate();
+  const defaultDates = useMemo(() => createDefaultEndDate(), []);
   const [formData, setFormData] = useState<FormDataState>({
     tripTitle: "",
     destination: "",
-    startDate,
-    endDate,
+    startDate: defaultDates.startDate,
+    endDate: defaultDates.endDate,
     budget: "medium",
     travelStyle: "relaxed",
     interests: "",
@@ -91,8 +74,75 @@ export default function Home() {
     { id: 2, text: "Confirm accommodation details", done: false },
   ]);
   const [nextChecklistId, setNextChecklistId] = useState(3);
+  const [savedTrips, setSavedTrips] = useState<SavedTrip[]>([]);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [isFetchingTrips, setIsFetchingTrips] = useState(true);
+  const [isSavingTrip, setIsSavingTrip] = useState(false);
+  const [deletingTripId, setDeletingTripId] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
 
   const tripDays = calculateTripDays(formData.startDate, formData.endDate);
+
+  const refreshSavedTrips = async (userId: string) => {
+    const trips = await listTrips(userId);
+    setSavedTrips(trips);
+    return trips;
+  };
+
+  useEffect(() => {
+    const loadSession = async () => {
+      try {
+        const currentSession = await getCurrentSession();
+        setSession(currentSession);
+      } catch (fetchError) {
+        setError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "Failed to read authentication session",
+        );
+      } finally {
+        setIsAuthLoading(false);
+      }
+    };
+
+    void loadSession();
+
+    const unsubscribe = onAuthStateChanged((nextSession) => {
+      setSession(nextSession);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const loadSavedTrips = async () => {
+      if (!session?.user?.id) {
+        setSavedTrips([]);
+        setSelectedTripId(null);
+        setIsFetchingTrips(false);
+        return;
+      }
+
+      setIsFetchingTrips(true);
+      try {
+        await refreshSavedTrips(session.user.id);
+      } catch (fetchError) {
+        setError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "Failed to fetch saved trips",
+        );
+      } finally {
+        setIsFetchingTrips(false);
+      }
+    };
+
+    void loadSavedTrips();
+  }, [session?.user?.id]);
 
   const generateItinerary = async () => {
     setIsLoading(true);
@@ -245,6 +295,137 @@ export default function Home() {
     setChecklistInput("");
   };
 
+  const handleSaveTrip = async () => {
+    if (!result || !session?.user?.id) return;
+    setIsSavingTrip(true);
+    setSaveMessage(null);
+    setError(null);
+
+    try {
+      const payload = {
+        formData,
+        days: tripDays,
+        notes: tripNotes,
+        checklist,
+        itinerary: result,
+      };
+
+      const savedTrip = selectedTripId
+        ? await updateTrip(session.user.id, selectedTripId, payload)
+        : await createTrip(session.user.id, payload);
+
+      const refreshedTrips = await refreshSavedTrips(session.user.id);
+      const updatedSelectedTrip = refreshedTrips.find((trip) => trip.id === savedTrip.id);
+      setSelectedTripId(updatedSelectedTrip?.id ?? savedTrip.id);
+      setSaveMessage(selectedTripId ? "Trip updated." : "Trip saved.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Failed to save trip");
+    } finally {
+      setIsSavingTrip(false);
+    }
+  };
+
+  const handleOpenTrip = (trip: SavedTrip) => {
+    setFormData(trip.formData);
+    setTripNotes(trip.notes);
+    setChecklist(trip.checklist);
+    setNextChecklistId(
+      trip.checklist.reduce((maxId, item) => Math.max(maxId, item.id), 0) + 1,
+    );
+    setResult(trip.itinerary);
+    setSelectedTripId(trip.id);
+    setSaveMessage(`Loaded "${trip.formData.tripTitle || trip.formData.destination}".`);
+  };
+
+  const handleDeleteTrip = async (id: string) => {
+    if (!session?.user?.id) return;
+    setDeletingTripId(id);
+    setError(null);
+    try {
+      await deleteTrip(session.user.id, id);
+      setSavedTrips((prev) => prev.filter((trip) => trip.id !== id));
+      if (selectedTripId === id) {
+        setSelectedTripId(null);
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete trip");
+    } finally {
+      setDeletingTripId(null);
+    }
+  };
+
+  const handleSignUp = async (email: string, password: string) => {
+    setIsAuthSubmitting(true);
+    setAuthMessage(null);
+    setError(null);
+    try {
+      const data = await signUpWithEmail(email, password);
+      if (data.user && !data.session) {
+        setAuthMessage("Sign-up successful. Check your email to confirm your account.");
+      } else {
+        setAuthMessage("Account created and signed in.");
+      }
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Sign-up failed");
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const handleSignIn = async (email: string, password: string) => {
+    setIsAuthSubmitting(true);
+    setAuthMessage(null);
+    setError(null);
+    try {
+      await signInWithEmail(email, password);
+      setAuthMessage("Logged in successfully.");
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Login failed");
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setError(null);
+    setSaveMessage(null);
+    try {
+      await signOutUser();
+      setResult(null);
+      setTripNotes("");
+      setChecklistInput("");
+      setChecklist([
+        { id: 1, text: "Passport and travel documents", done: false },
+        { id: 2, text: "Confirm accommodation details", done: false },
+      ]);
+      setSelectedTripId(null);
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Logout failed");
+    }
+  };
+
+  if (isAuthLoading) {
+    return (
+      <main className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 px-4 py-10">
+        <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+          Loading session...
+        </div>
+      </main>
+    );
+  }
+
+  if (!session?.user) {
+    return (
+      <AuthPanel
+        isSubmitting={isAuthSubmitting}
+        error={error}
+        message={authMessage}
+        onSignIn={handleSignIn}
+        onSignUp={handleSignUp}
+      />
+    );
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 text-slate-900">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
@@ -264,8 +445,22 @@ export default function Home() {
               </p>
             </div>
             <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
-              Saved Trips:{" "}
-              <span className="font-semibold">{result ? 1 : 0} active</span>
+              <div className="flex items-center gap-3">
+                <div>
+                  <p className="text-xs text-indigo-600">{session.user.email}</p>
+                  <p>
+                    Saved Trips:{" "}
+                    <span className="font-semibold">{savedTrips.length} saved</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 transition hover:bg-indigo-50"
+                >
+                  Log out
+                </button>
+              </div>
             </div>
           </div>
         </header>
@@ -436,17 +631,58 @@ export default function Home() {
           <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <h2 className="text-lg font-semibold tracking-tight">Saved Trips</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Placeholder structure for upcoming trip management.
+              Reopen, continue editing, or remove past trips.
             </p>
             <div className="mt-4 space-y-3">
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
-                <p className="text-sm font-medium text-slate-700">Spring Escape</p>
-                <p className="text-xs text-slate-500">Draft itinerary</p>
-              </div>
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
-                <p className="text-sm font-medium text-slate-700">Beach Week</p>
-                <p className="text-xs text-slate-500">Planning soon</p>
-              </div>
+              {isFetchingTrips && (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-600">
+                  Loading saved trips...
+                </div>
+              )}
+
+              {!isFetchingTrips && savedTrips.length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-sm text-slate-600">
+                  No saved trips yet.
+                </div>
+              )}
+
+              {savedTrips.map((trip) => (
+                <div
+                  key={trip.id}
+                  className={`rounded-xl border bg-slate-50 p-3 transition ${
+                    selectedTripId === trip.id
+                      ? "border-indigo-300 ring-2 ring-indigo-100"
+                      : "border-slate-200"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleOpenTrip(trip)}
+                    className="w-full text-left"
+                  >
+                    <p className="text-sm font-medium text-slate-800">
+                      {trip.formData.tripTitle || "Untitled Trip"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {trip.formData.destination} · {trip.formData.startDate} to{" "}
+                      {trip.formData.endDate}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Updated {new Date(trip.updatedAt).toLocaleString()}
+                    </p>
+                  </button>
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTrip(trip.id)}
+                      disabled={deletingTripId === trip.id}
+                      className="rounded-md px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {deletingTripId === trip.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </aside>
         </section>
@@ -454,6 +690,11 @@ export default function Home() {
         {error && (
           <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
+          </p>
+        )}
+        {saveMessage && (
+          <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {saveMessage}
           </p>
         )}
 
@@ -518,6 +759,20 @@ export default function Home() {
                       className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-700 disabled:opacity-60"
                     >
                       {isLoading ? "Regenerating..." : "Regenerate full itinerary"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveTrip}
+                      disabled={isSavingTrip}
+                      className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60"
+                    >
+                      {isSavingTrip
+                        ? selectedTripId
+                          ? "Updating..."
+                          : "Saving..."
+                        : selectedTripId
+                          ? "Update Trip"
+                          : "Save Trip"}
                     </button>
                   </div>
                 </div>

@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const getGroqClient = () => {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing GROQ_API_KEY");
+  }
+  return new Groq({ apiKey });
+};
 
 type GenerateRequestBody = {
   destination: string;
@@ -15,6 +19,7 @@ type GenerateRequestBody = {
 
 export async function POST(req: Request) {
   try {
+    const groq = getGroqClient();
     const body: GenerateRequestBody = await req.json();
 
     const { destination, days, budget, style, interests } = body;
