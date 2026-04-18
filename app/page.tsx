@@ -84,7 +84,7 @@ const detectCurrencySymbol = (days: ItineraryDay[]) => {
 };
 
 const parseDayCostRange = (value: string) => {
-  const numericTokens = value.match(/\d[\d,.]*/g) ?? [];
+  const numericTokens = value?.match(/\d[\d,.]*/) ?? [];
   const numbers = numericTokens
     .map((token) => Number.parseFloat(token.replace(/,/g, "")))
     .filter((token) => Number.isFinite(token) && token > 0);
@@ -490,6 +490,10 @@ export default function Home() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (tripDays > 30) {
+      pushToast("error", "Maximum trip duration is 30 days. Please adjust your dates.");
+      return;
+    }
     setResult(null);
     await generateItinerary();
   };

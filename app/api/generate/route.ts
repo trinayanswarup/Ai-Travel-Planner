@@ -31,15 +31,36 @@ export async function POST(req: Request) {
       );
     }
 
+    const budgetGuide: Record<string, string> = {
+      low: "Low budget: total $50–100 USD per day. Use hostels, street food, public transport.",
+      medium: "Medium budget: total $150–250 USD per day. Use 3-star hotels, casual restaurants, taxis.",
+      high: "High budget: total $400–700 USD per day. Use 5-star hotels, fine dining, private transfers.",
+    };
+
+    const budgetInstruction = budgetGuide[budget.toLowerCase()] ?? `Budget tier: ${budget}`;
+    const numDays = Number(days);
+    const dailyMin = budget.toLowerCase() === "low" ? 50 : budget.toLowerCase() === "medium" ? 150 : 400;
+    const dailyMax = budget.toLowerCase() === "low" ? 100 : budget.toLowerCase() === "medium" ? 250 : 700;
+    const totalMin = dailyMin * numDays;
+    const totalMax = dailyMax * numDays;
+
     const prompt = `
 Generate a personalized travel itinerary.
 
 Trip details:
 - Destination: ${destination}
 - Number of days: ${days}
-- Budget: ${budget}
+- Budget: ${budgetInstruction}
+- Total trip budget: $${totalMin}–$${totalMax} USD (calculated as daily rate × number of days)
 - Travel style: ${style}
 - Interests: ${interests}
+
+RULES:
+1. All money must be in USD only. Never use INR, EUR, or any local currency.
+2. Activities must match the budget tier (e.g. no luxury hotels on a low budget).
+3. estimated_cost for each day must stay within the daily range ($${dailyMin}–$${dailyMax} USD).
+4. total_estimated_budget must be "$${totalMin}–$${totalMax} USD".
+5. All day costs must add up to the total.
 
 Return ONLY valid JSON.
 Do not include markdown.
