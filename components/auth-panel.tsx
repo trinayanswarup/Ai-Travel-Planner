@@ -33,16 +33,16 @@ export function AuthPanel({
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 px-4 py-10 text-slate-900">
-      <div className="mx-auto w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+    <main className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-indigo-50/40 px-4 py-10 text-slate-900">
+      <div className="mx-auto w-full max-w-md rounded-3xl border border-white/70 bg-white/85 p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur sm:p-8">
         <p className="text-xs font-medium uppercase tracking-[0.2em] text-indigo-600">
-          Smart Trip Workspace
+          Atlas AI Planner
         </p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">
           {mode === "login" ? "Welcome back" : "Create your account"}
         </h1>
         <p className="mt-2 text-sm text-slate-600">
-          Sign in to access your private trips and planner workspace.
+          Sign in to access your private trip workspace and AI planning engine.
         </p>
 
         <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
@@ -84,11 +84,14 @@ export function AuthPanel({
             onChange={(event) => setPassword(event.target.value)}
             className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
           />
+          <p className="text-xs text-slate-500">
+            Use at least 6 characters. For better security, use 12+.
+          </p>
 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-60"
+            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting
               ? mode === "login"
