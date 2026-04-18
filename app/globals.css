@@ -1,11 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f7ff;
-  --foreground: #0f172a;
-  --surface: #ffffff;
-  --surface-muted: #f8fafc;
-  --ring: #6366f1;
+  --background: #F7F5F2;
+  --foreground: #1A1A18;
+  --surface: #FFFFFF;
+  --surface-muted: #F3F1EE;
+  --ring: #1C3A2A;
+  --border: #E8E4DF;
 }
 
 @theme inline {
@@ -17,33 +18,38 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #020617;
-    --foreground: #e2e8f0;
-    --surface: #0b1220;
-    --surface-muted: #111b2f;
-    --ring: #818cf8;
+    --background: #111210;
+    --foreground: #E8E4DF;
+    --surface: #1A1A18;
+    --surface-muted: #222220;
+    --ring: #5B8A70;
+    --border: #2E2E2C;
   }
 }
 
 body {
-  background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.08), transparent 36%),
-    radial-gradient(circle at 20% 80%, rgba(56, 189, 248, 0.08), transparent 28%),
-    var(--background);
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
-  border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+  border-color: var(--border);
+}
+
+button, a {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--ring) 30%, white);
-  color: #0b1022;
+  background: color-mix(in srgb, var(--ring) 18%, white);
+  color: var(--foreground);
 }
 
 :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--ring) 60%, white);
+  outline: 2px solid color-mix(in srgb, var(--ring) 50%, white);
   outline-offset: 2px;
 }
