@@ -1,102 +1,54 @@
-# AI Travel Planner
+**AI-powered travel itinerary planner — generates personalised day-by-day trip plans, stores them in Supabase, and lets users iteratively refine them.**
 
-A full-stack AI-powered travel planning app that generates structured, editable itineraries — built as a real product, not a demo.
+## What It Does
 
-👉 **[Live Demo](https://ai-travel-planner-woad.vercel.app/)**
+Users enter a destination, date range, budget tier, travel style, and interests. Groq's Llama 3.3 70B model generates a structured day-by-day itinerary (morning / afternoon / evening activities). Plans are editable after generation — users can modify activities, regenerate individual days, and rebalance the rest of the trip to maintain context. Trips are saved per-user in Supabase and persist across sessions.
 
----
-
-## Why I Built This
-
-Most AI travel tools generate static text you can't actually work with.
-
-I wanted to build something closer to a real product: structured output, editable plans, persistence, iterative refinement, and user control over AI decisions.
-
-> AI generates ideas, but the application enforces correctness.
-
----
-
-## Features
-
-**AI Itinerary Generation**
-Generates day-by-day plans (morning / afternoon / evening) based on destination, budget tier, travel style, and interests.
-
-**Adaptive Replanning**
-Regenerate a single day and optionally rebalance the rest of the itinerary — maintaining context across days instead of starting over. Turns the AI from a one-shot generator into a stateful planning system.
-
-**Editable Itinerary**
-Modify titles, activities, and tips. Add or remove activities per slot. Full control after generation.
-
-**Persistent Trips**
-Save, load, update, and delete trips. All data is user-scoped via Supabase authentication.
-
-**Deterministic Budget System**
-Budget ranges are calculated in code before the AI call — not invented by the model. Enforces realistic daily totals with a category breakdown (accommodation, dining, transport, experiences, buffer).
-
-**Notes & Checklist**
-Freeform notes and a checklist system per trip.
-
----
+Live: https://ai-travel-planner-woad.vercel.app
 
 ## Tech Stack
 
-| Layer           | Tech                                                  |
-| --------------- | ----------------------------------------------------- |
-| Frontend        | Next.js (App Router), React, TypeScript, Tailwind CSS |
-| Backend         | Next.js API Routes                                    |
-| AI              | Groq API (llama-3.3-70b)                              |
-| Database & Auth | Supabase (PostgreSQL + Auth)                          |
-| Deployment      | Vercel                                                |
+| Layer      | Technology                   |
+|------------|------------------------------|
+| Language   | TypeScript                   |
+| Framework  | Next.js 15 App Router        |
+| AI         | Groq API — Llama 3.3 70B     |
+| Database   | Supabase PostgreSQL          |
+| Auth       | Supabase Auth                |
+| Styling    | Tailwind CSS                 |
+| Deployment | Vercel                       |
 
----
+## Architecture Decisions
 
-## Engineering Approach
+- **AI calls are server-side only.** All Groq requests go through `/api/generate`. The API key never touches the browser, and the server controls prompt construction, budget constraints, and output validation before anything reaches the client.
+- **Groq over OpenAI.** Groq's inference speed on Llama 3.3 70B is significantly faster for JSON-structured outputs, which matters for a planning flow where the user is waiting on a response.
+- **Supabase for both auth and database.** One provider means user IDs from the auth layer map directly to Row-Level Security policies on the trips table — no separate user management, no cross-service JWT translation.
 
-Built with an agentic workflow mindset — using AI tools (Claude Code, Cursor) for scaffolding and iteration, while focusing on:
+## AI Development Workflow
 
-- Breaking problems into smaller, testable systems
-- Validating and constraining AI output (budget logic, JSON structure)
-- Owning the product decisions, not just the prompts
+This project was built using Claude Code as the primary development agent. Before writing any code, `AGENTS.md` was written first to give the agent explicit context about the stack, conventions, and breaking changes in this version of Next.js. `CLAUDE.md` points to `AGENTS.md` so the agent loads project context automatically on every startup.
 
----
+Specific redirections made during development:
+- The agent initially called the Groq API directly from the page component (client-side). Caught and redirected to a server-side API route to keep the key off the client.
+- The agent used `getServerSideProps` in early scaffolding — a Pages Router pattern. Corrected to App Router conventions (route handlers, server components).
+- Budget logic was being delegated entirely to the AI prompt. Redirected to deterministic code-side calculation before the API call, with the model instructed to stay within the pre-computed ranges.
 
-## Local Setup
+## Getting Started
 
 ```bash
 git clone https://github.com/trinayanswarup/Ai-Travel-Planner
 cd Ai-Travel-Planner
 npm install
-```
-
-Create a `.env.local` file using `.env.example` as reference:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-GROQ_API_KEY=your_groq_api_key
-```
-
-Run the dev server:
-
-```bash
+cp .env.example .env.local   # fill in your keys
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+On first setup, run `supabase/schema.sql` in your Supabase SQL editor to create the trips table and RLS policies.
 
-**Supabase setup:** Run `supabase/schema.sql` in your Supabase SQL editor for a fresh setup.
+## Environment Variables
 
----
-
-## Project Structure
-
-```
-app/
-  api/generate/    # Groq API route
-  page.tsx         # Main planner UI
-components/        # Auth panel, reusable UI
-lib/
-  supabase/        # Auth + trip CRUD
-  types/           # Shared TypeScript types
-supabase/          # Schema + migration SQL
-```
+| Variable                        | Scope            | Description                                          |
+|---------------------------------|------------------|------------------------------------------------------|
+| `NEXT_PUBLIC_SUPABASE_URL`      | Public (browser) | Supabase project URL                                 |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public (browser) | Supabase anon key                                    |
+| `GROQ_API_KEY`                  | Server-only      | Groq API key — never exposed to the client           |
